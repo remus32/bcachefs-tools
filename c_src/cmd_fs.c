@@ -1,6 +1,7 @@
 #include <getopt.h>
 #include <stdio.h>
 #include <sys/ioctl.h>
+#include <math.h>
 
 #include <uuid/uuid.h>
 
@@ -118,6 +119,14 @@ static void devs_usage_to_text(struct printbuf *out,
 	printbuf_tabstops_reset(out);
 	prt_newline(out);
 
+	uint32_t max_dec_places = 9;
+	darray_for_each(dev_names, d) {
+		struct bch_ioctl_dev_usage_v2 *u = bchu_dev_usage(fs, d->idx);
+		u64 capacity = u->nr_buckets * u->bucket_size;
+		u32 dec_places = (uint32_t)ceilf(log10f(capacity << 9));
+		max_dec_places = max(max_dec_places, dec_places);
+	}
+
 	if (full) {
 		printbuf_tabstop_push(out, 16);
 		printbuf_tabstop_push(out, 20);
@@ -130,8 +139,13 @@ static void devs_usage_to_text(struct printbuf *out,
 		printbuf_tabstop_push(out, 32);
 		printbuf_tabstop_push(out, 12);
 		printbuf_tabstop_push(out, 8);
-		printbuf_tabstop_push(out, 10);
-		printbuf_tabstop_push(out, 10);
+		if (out->human_readable_units) {
+			printbuf_tabstop_push(out, 10);
+			printbuf_tabstop_push(out, 10);
+		} else {
+			printbuf_tabstop_push(out, max_dec_places + 1);
+			printbuf_tabstop_push(out, max_dec_places + 1);
+		}
 		printbuf_tabstop_push(out, 6);
 
 		prt_printf(out, "Device label\tDevice\tState\tSize\rUsed\rUse%%\r\n");
@@ -149,7 +163,7 @@ static void devs_usage_to_text(struct printbuf *out,
 				   d->dev ?: "(device not found)",
 				   bch2_member_states[u->state]);
 
-			prt_units_u64(out, (u->nr_buckets * u->bucket_size) << 9);
+			prt_units_u64(out, capacity << 9);
 			prt_tab_rjust(out);
 			prt_units_u64(out, used << 9);
 
